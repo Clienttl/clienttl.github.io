@@ -1,1 +1,247 @@
-sd
+local OrionLib = loadstring(
+    game:HttpGet(
+        'https://raw.githubusercontent.com/jensonhirst/Orion/main/source'
+    )
+)()
+
+local Window = OrionLib:MakeWindow({
+    Name = 'xsx',
+    HidePremium = false,
+    SaveConfig = false,
+    ConfigFolder = 'OrionTest',
+})
+
+local Main = Window:MakeTab({
+    Name = 'main',
+    Icon = 'rbxassetid://4483345998',
+    PremiumOnly = false,
+})
+
+local Players = game:GetService("Players")
+
+local player = Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local hrp = character:WaitForChild("HumanoidRootPart")
+
+local toggled = false
+local bodyGyro = nil
+local bodyVelocity = nil
+local teleportCoroutine = nil
+local moveSpeed = 65 -- movement speed (can tweak)
+
+local function equipSpeedCoil()
+    local backpack = player:WaitForChild("Backpack")
+    local char = player.Character
+    if char then
+        local tool = char:FindFirstChild("Speed Coil")
+        if tool then
+            tool.Parent = backpack -- unequip first
+        end
+    end
+    local coilTool = backpack:FindFirstChild("Speed Coil")
+    if coilTool then
+        coilTool.Parent = char -- equip
+    end
+end
+
+local function setupBodyControls()
+    if bodyGyro then bodyGyro:Destroy() end
+    if bodyVelocity then bodyVelocity:Destroy() end
+
+    bodyGyro = Instance.new("BodyGyro")
+    bodyGyro.MaxTorque = Vector3.new(400000, 400000, 400000)
+    bodyGyro.P = 10000
+    bodyGyro.D = 1000
+    bodyGyro.CFrame = hrp.CFrame
+    bodyGyro.Parent = hrp
+
+    bodyVelocity = Instance.new("BodyVelocity")
+    bodyVelocity.MaxForce = Vector3.new(400000, 400000, 400000)
+    bodyVelocity.Velocity = Vector3.new(0,0,0)
+    bodyVelocity.Parent = hrp
+end
+
+local function clearBodyControls()
+    if bodyGyro then bodyGyro:Destroy() bodyGyro = nil end
+    if bodyVelocity then bodyVelocity:Destroy() bodyVelocity = nil end
+end
+
+local function lookAt(targetPos)
+    local direction = (targetPos - hrp.Position)
+    if direction.Magnitude == 0 then return end
+    local unitDirection = direction.Unit
+    local targetCFrame = CFrame.new(hrp.Position, hrp.Position + unitDirection)
+    if bodyGyro then
+        bodyGyro.CFrame = targetCFrame
+    end
+end
+
+local function moveToPosition(targetPos, speed)
+    speed = speed or moveSpeed
+    while toggled do
+        local direction = targetPos - hrp.Position
+        local dist = direction.Magnitude
+        if dist < 1 then
+            break
+        end
+
+        lookAt(targetPos)
+        if bodyVelocity then
+            bodyVelocity.Velocity = direction.Unit * speed
+        end
+        task.wait(0) -- snappier update
+    end
+    if bodyVelocity then
+        bodyVelocity.Velocity = Vector3.new(0,0,0) -- stop instantly
+    end
+end
+
+local function getNearestPlot()
+    local plots = workspace:FindFirstChild("Plots")
+    if not plots then return nil end
+
+    local nearestPlot = nil
+    local nearestDistance = math.huge
+    for _, plot in pairs(plots:GetChildren()) do
+        if plot:IsA("Model") and plot:FindFirstChild("AnimalPodiums") then
+            local plotCFrame = nil
+            if plot.PrimaryPart then
+                plotCFrame = plot.PrimaryPart.CFrame
+            else
+                local parts = plot:GetDescendants()
+                local positions = {}
+                for _, p in ipairs(parts) do
+                    if p:IsA("BasePart") then
+                        table.insert(positions, p.Position)
+                    end
+                end
+                if #positions > 0 then
+                    local sum = Vector3.new(0,0,0)
+                    for _, pos in ipairs(positions) do sum += pos end
+                    plotCFrame = CFrame.new(sum / #positions)
+                end
+            end
+
+            if plotCFrame then
+                local dist = (hrp.Position - plotCFrame.Position).Magnitude
+                if dist < nearestDistance then
+                    nearestDistance = dist
+                    nearestPlot = plot
+                end
+            end
+        end
+    end
+    return nearestPlot
+end
+
+local function getPodiumModel(index)
+    local plot = getNearestPlot()
+    if not plot then return nil end
+    local podiums = plot:FindFirstChild("AnimalPodiums")
+    if not podiums then return nil end
+    local podiumModel = podiums:FindFirstChild(tostring(index))
+    return podiumModel
+end
+
+local function getPodiumCFrame(podiumModel)
+    if not podiumModel then return nil end
+    if podiumModel.PrimaryPart then
+        return podiumModel.PrimaryPart.CFrame
+    else
+        local parts = podiumModel:GetDescendants()
+        local sum = Vector3.new(0,0,0)
+        local count = 0
+        for _, p in ipairs(parts) do
+            if p:IsA("BasePart") then
+                sum += p.Position
+                count += 1
+            end
+        end
+        if count > 0 then
+            local avgPos = sum / count
+            return CFrame.new(avgPos)
+        else
+            return nil
+        end
+    end
+end
+
+local function teleportLoop()
+    local sequence = {
+        1,2,3,4,5,
+        6,5,6,
+        7,8,9,10,
+        10,6,5,
+        4,3,2,1
+    }
+
+    while toggled do
+        for _, idx in ipairs(sequence) do
+            if not toggled then break end
+            local podiumModel = getPodiumModel(idx)
+            local targetCFrame = getPodiumCFrame(podiumModel)
+            if targetCFrame then
+                local targetPos = targetCFrame.Position + Vector3.new(0, 5, 0) -- 3 studs above actual pos
+                moveToPosition(targetPos, moveSpeed)
+            else
+                warn("Podium model "..tostring(idx).." missing or no CFrame")
+            end
+            task.wait(0)
+        end
+    end
+    clearBodyControls()
+end
+
+local function startTeleportLoop()
+    setupBodyControls()
+    if teleportCoroutine then
+        pcall(function() coroutine.close(teleportCoroutine) end)
+    end
+    teleportCoroutine = coroutine.create(teleportLoop)
+    coroutine.resume(teleportCoroutine)
+end
+
+local function onCharacterAdded(char)
+    character = char
+    hrp = character:WaitForChild("HumanoidRootPart")
+
+    equipSpeedCoil()
+
+    if toggled then
+        setupBodyControls()
+        if teleportCoroutine then
+            pcall(function() coroutine.close(teleportCoroutine) end)
+        end
+        teleportCoroutine = coroutine.create(teleportLoop)
+        coroutine.resume(teleportCoroutine)
+    end
+end
+
+player.CharacterAdded:Connect(onCharacterAdded)
+
+equipSpeedCoil()
+
+Main:AddToggle({
+    Name = "base anti hit",
+    Default = false,
+    Callback = function(value)
+        toggled = value
+        if toggled then
+            if not character or not hrp then
+                character = player.Character or player.CharacterAdded:Wait()
+                hrp = character:WaitForChild("HumanoidRootPart")
+            end
+
+            equipSpeedCoil()
+            startTeleportLoop()
+        else
+            clearBodyControls()
+            if teleportCoroutine then
+                pcall(function() coroutine.close(teleportCoroutine) end)
+                teleportCoroutine = nil
+            end
+        end
+    end
+})
+
+OrionLib:Init()
