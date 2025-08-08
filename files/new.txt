@@ -16,6 +16,11 @@ local Main = Window:MakeTab({
     Icon = 'rbxassetid://4483345998',
     PremiumOnly = false,
 })
+local Other = Window:MakeTab({
+    Name = 'other',
+    Icon = 'rbxassetid://4483345998',
+    PremiumOnly = false,
+})
 
 local Players = game:GetService("Players")
 
@@ -222,7 +227,7 @@ player.CharacterAdded:Connect(onCharacterAdded)
 equipSpeedCoil()
 
 Main:AddToggle({
-    Name = "base anti hit",
+    Name = "anti hit [base]",
     Default = false,
     Callback = function(value)
         toggled = value
@@ -243,5 +248,209 @@ Main:AddToggle({
         end
     end
 })
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local RunService = game:GetService("RunService")
+
+local antiHitEnabled = false
+local loopConnection
+local bodyGyro
+local bodyVelocity
+
+Main:AddToggle({
+	Name = "anti hit [outside]",
+	Default = false,
+	Callback = function(Value)
+		antiHitEnabled = Value
+
+		-- Cleanup if disabling
+		if not Value then
+			if loopConnection then loopConnection:Disconnect() loopConnection = nil end
+			if bodyGyro then bodyGyro:Destroy() bodyGyro = nil end
+			if bodyVelocity then bodyVelocity:Destroy() bodyVelocity = nil end
+			return
+		end
+
+		-- Main loop
+		loopConnection = RunService.Heartbeat:Connect(function()
+			if not antiHitEnabled then return end
+
+			local char = LocalPlayer.Character
+			if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+			local root = char.HumanoidRootPart
+
+			local nearest
+			local nearestDist = math.huge
+
+			-- Find nearest player
+			for _, plr in ipairs(Players:GetPlayers()) do
+				if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+					local dist = (plr.Character.HumanoidRootPart.Position - root.Position).Magnitude
+					if dist < nearestDist then
+						nearestDist = dist
+						nearest = plr
+					end
+				end
+			end
+
+			if nearest and nearestDist <= 25 then
+				-- Create movement parts if not exist
+				if not bodyGyro then
+					bodyGyro = Instance.new("BodyGyro")
+					bodyGyro.MaxTorque = Vector3.new(1e5, 1e5, 1e5)
+					bodyGyro.P = 1e5
+					bodyGyro.Parent = root
+				end
+				if not bodyVelocity then
+					bodyVelocity = Instance.new("BodyVelocity")
+					bodyVelocity.MaxForce = Vector3.new(1e5, 1e5, 1e5)
+					bodyVelocity.P = 1e4
+					bodyVelocity.Parent = root
+				end
+
+				-- Fly away from nearest
+				local awayDir = (root.Position - nearest.Character.HumanoidRootPart.Position).Unit
+				bodyGyro.CFrame = CFrame.lookAt(root.Position, root.Position + awayDir)
+				bodyVelocity.Velocity = awayDir * 65
+			else
+				-- Stop movement but keep toggle ON
+				if bodyGyro then bodyGyro:Destroy() bodyGyro = nil end
+				if bodyVelocity then bodyVelocity:Destroy() bodyVelocity = nil end
+			end
+		end)
+	end
+})
+local UserInputService = game:GetService("UserInputService")
+local Players = game:GetService("Players")
+local Debris = game:GetService("Debris")
+
+local player = Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoid = character:WaitForChild("Humanoid")
+local rootPart = character:WaitForChild("HumanoidRootPart")
+
+local platformSpawnEnabled = false
+
+-- Update refs on respawn
+player.CharacterAdded:Connect(function(char)
+    character = char
+    humanoid = character:WaitForChild("Humanoid")
+    rootPart = character:WaitForChild("HumanoidRootPart")
+end)
+
+local function createPlatformUnder()
+    if not rootPart then return end
+
+    local platform = Instance.new("Part")
+    platform.Size = Vector3.new(1, 1, 1)
+    platform.Anchored = true
+    platform.CanCollide = true
+    platform.Transparency = 0.8
+    platform.Material = Enum.Material.Neon
+    platform.BrickColor = BrickColor.new("Really black")
+
+    platform.CFrame = rootPart.CFrame * CFrame.new(0, -3, 0)
+    platform.Parent = workspace
+
+    Debris:AddItem(platform, 1) -- now deletes after 1 second
+end
+
+-- Toggle integration:
+Other:AddToggle({
+    Name = "inf jump",
+    Default = false,
+    Callback = function(value)
+        platformSpawnEnabled = value
+        print("pp", value)
+    end
+})
+
+-- Listen for jump only when toggle is ON
+UserInputService.JumpRequest:Connect(function()
+    if platformSpawnEnabled and humanoid and rootPart then
+        createPlatformUnder()
+    end
+end)
+
+
+-- Store these outside so they persist between toggle changes
+local bodyGyro, bodyVelocity, flyConnection
+
+Main:AddToggle({
+	Name = "boost for steal",
+	Default = false,
+	Callback = function(Value)
+		local Players = game:GetService("Players")
+		local RunService = game:GetService("RunService")
+		local UIS = game:GetService("UserInputService")
+		local LocalPlayer = Players.LocalPlayer
+
+		local flySpeed = 40
+
+		if Value then
+			local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+			local Root = Character:FindFirstChild("HumanoidRootPart")
+			local Humanoid = Character:FindFirstChildWhichIsA("Humanoid")
+
+			if Root and Humanoid then
+				Humanoid.PlatformStand = true
+
+				-- Create BodyGyro
+				bodyGyro = Instance.new("BodyGyro")
+				bodyGyro.MaxTorque = Vector3.new(1e5, 1e5, 1e5)
+				bodyGyro.P = 1e4
+				bodyGyro.CFrame = Root.CFrame
+				bodyGyro.Parent = Root
+
+				-- Create BodyVelocity
+				bodyVelocity = Instance.new("BodyVelocity")
+				bodyVelocity.MaxForce = Vector3.new(1e5, 1e5, 1e5)
+				bodyVelocity.Velocity = Vector3.zero
+				bodyVelocity.Parent = Root
+
+				-- Fly movement loop
+				flyConnection = RunService.RenderStepped:Connect(function()
+					local camCF = workspace.CurrentCamera.CFrame
+					bodyGyro.CFrame = camCF
+
+					local moveDir = Humanoid.MoveDirection
+
+					-- Up/Down (PC keys unless mobile GUI is added)
+					if UIS:IsKeyDown(Enum.KeyCode.Space) then
+						moveDir += Vector3.new(0, 1, 0)
+					end
+					if UIS:IsKeyDown(Enum.KeyCode.LeftControl) then
+						moveDir -= Vector3.new(0, 1, 0)
+					end
+
+					bodyVelocity.Velocity = moveDir * flySpeed
+				end)
+			end
+		else
+			-- Disable fly
+			local Character = LocalPlayer.Character
+			if Character then
+				local Humanoid = Character:FindFirstChildWhichIsA("Humanoid")
+				if Humanoid then
+					Humanoid.PlatformStand = false
+				end
+			end
+
+			if flyConnection then
+				flyConnection:Disconnect()
+				flyConnection = nil
+			end
+			if bodyGyro then
+				bodyGyro:Destroy()
+				bodyGyro = nil
+			end
+			if bodyVelocity then
+				bodyVelocity:Destroy()
+				bodyVelocity = nil
+			end
+		end
+	end    
+})
+
 
 OrionLib:Init()
