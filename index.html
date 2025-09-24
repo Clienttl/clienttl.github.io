@@ -1,27 +1,43 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>mikuproxy</title>
   <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      height: 100%;
-      overflow: hidden;
-    }
-    iframe {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      border: none;
-    }
+    html,body{height:100%;margin:0;display:flex;align-items:center;justify-content:center;background:#0b0b0b;color:#fff;font-family:Arial,Helvetica,sans-serif}
+    button{padding:14px 22px;font-size:16px;border-radius:8px;border:none;cursor:pointer}
   </style>
 </head>
 <body>
-  <iframe src="https://ideal-acorn-97q6jjw7v6743pxj7-8080.app.github.dev/" allowfullscreen></iframe>
+  <div>
+    <h2 style="margin:0 0 12px 0">miku miku</h2>
+    <button id="open">get miku</button>
+  </div>
+
+  <script>
+    const url = 'https://ideal-acorn-97q6jjw7v6743pxj7-8080.app.github.dev/';
+
+    document.getElementById('open').addEventListener('click', () => {
+      // open a blank tab (user gesture) and then navigate it to the URL
+      const w = window.open('about:blank', '_blank');
+      if (!w) {
+        // popup blocked — fallback: navigate current window
+        window.location.href = url;
+        return;
+      }
+      try {
+        w.location.href = url; // should work
+      } catch (err) {
+        // some browsers might restrict direct location change — use a meta-refresh fallback
+        w.document.write(
+          '<!doctype html><html><head><meta http-equiv="refresh" content="0;url=' +
+          encodeURI(url) +
+          '"></head><body></body></html>'
+        );
+        w.document.close();
+      }
+    });
+  </script>
 </body>
 </html>
