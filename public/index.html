@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Discord Verification</title>
+  <style>
+    body {
+      background: #0f0f14;
+      color: white;
+      font-family: sans-serif;
+      display: flex;
+      height: 100vh;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+    }
+    button {
+      padding: 20px 40px;
+      font-size: 18px;
+      border-radius: 8px;
+      border: none;
+      background: #5865f2;
+      color: white;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <h2>Hold to Verify</h2>
+  <button id="btn">Hold</button>
+  <script>
+    const token = location.pathname.split("/").pop();
+    const btn = document.getElementById("btn");
+    let timer;
+    btn.onmousedown = () => {
+      timer = setTimeout(() => {
+        fetch(`/api/confirm/${token}`, { method: "POST" })
+          .then(() => {
+            btn.innerText = "Verified ✔";
+            btn.disabled = true;
+          });
+      }, 2500); 
+    };
+    btn.onmouseup = btn.onmouseleave = () => clearTimeout(timer);
+  </script>
+</body>
+</html>
