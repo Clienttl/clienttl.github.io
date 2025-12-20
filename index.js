@@ -1,7 +1,12 @@
 import express from "express";
 import { nanoid } from "nanoid";
 import path from "path";
+import path from "path";
+import { fileURLToPath } from "url";
 
+// ES Modules replacement for __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
