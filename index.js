@@ -1,17 +1,25 @@
 import express from "express";
 import { nanoid } from "nanoid";
 import path from "path";
-import { fileURLToPath } from "url";
 
-// ES Modules replacement for __dirname
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 app.use(express.static("public"));
+
+/*
+tokenStore structure:
+token: {
+  userId,
+  createdAt,
+  verified,
+  callback
+}
+*/
 const tokenStore = new Map();
+
+// ⏱ token expiration (5 min)
 const TOKEN_TTL = 5 * 60 * 1000;
 
 /* ================= CREATE VERIFICATION ================= */
@@ -43,7 +51,7 @@ app.get("/v/:token", (req, res) => {
     return res.send("Verification link expired.");
   }
 
-  res.sendFile(path.join(__dirname, "public", "verify.html"));
+  res.sendFile(path.resolve("public/verify.html"));
 });
 
 /* ================= HOLD CONFIRM ================= */
