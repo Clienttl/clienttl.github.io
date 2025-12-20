@@ -7,19 +7,7 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 app.use(express.static("public"));
-
-/*
-tokenStore structure:
-token: {
-  userId,
-  createdAt,
-  verified,
-  callback
-}
-*/
 const tokenStore = new Map();
-
-// ⏱ token expiration (5 min)
 const TOKEN_TTL = 5 * 60 * 1000;
 
 /* ================= CREATE VERIFICATION ================= */
