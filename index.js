@@ -39,7 +39,7 @@ app.get("/v/:token", (req, res) => {
     return res.send("Verification link expired.");
   }
 
-  res.sendFile(path.resolve("public/verify.html"));
+  res.sendFile(path.join(__dirname, "public", "verify.html"));
 });
 
 /* ================= HOLD CONFIRM ================= */
