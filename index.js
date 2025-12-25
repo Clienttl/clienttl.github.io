@@ -7,16 +7,20 @@ import { fileURLToPath } from "url";
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+/* __dirname fix for ES modules */
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+/* middleware */
 app.use(cors());
 app.use(express.json());
 
-// Serve frontend
-app.use("/v", express.static(path.join(__dirname, "public")));
-
+/* =======================
+   IN-MEMORY SESSIONS
+======================= */
 const sessions = new Map();
+
+/* cleanup expired sessions (5 min) */
 setInterval(() => {
   const now = Date.now();
   for (const [id, s] of sessions) {
@@ -26,7 +30,11 @@ setInterval(() => {
   }
 }, 60_000);
 
-/* CREATE */
+/* =======================
+   API ROUTES
+======================= */
+
+/* CREATE verification */
 app.post("/create", (req, res) => {
   const id = nanoid(12);
 
@@ -43,26 +51,43 @@ app.post("/create", (req, res) => {
   });
 });
 
-/* VERIFY */
+/* VERIFY (frontend calls this) */
 app.post("/verify/:id", (req, res) => {
-  const s = sessions.get(req.params.id);
-  if (!s) return res.status(404).json({ success: false });
+  const session = sessions.get(req.params.id);
+  if (!session) {
+    return res.status(404).json({ success: false });
+  }
 
-  s.verified = true;
+  session.verified = true;
   res.json({ success: true });
 });
 
-/* STATUS */
+/* STATUS (Discord bot checks this) */
 app.get("/status/:id", (req, res) => {
-  const s = sessions.get(req.params.id);
-  if (!s) return res.status(404).json({ success: false });
+  const session = sessions.get(req.params.id);
+  if (!session) {
+    return res.status(404).json({ success: false });
+  }
 
   res.json({
     success: true,
-    verified: s.verified
+    verified: session.verified
   });
 });
 
+/* =======================
+   FRONTEND ROUTE
+======================= */
+
+/* Serve verification page for ANY /v/:id */
+app.get("/v/:id", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "v.html"));
+});
+
+/* =======================
+   START SERVER
+======================= */
+
 app.listen(PORT, () => {
-  console.log("Running on port", PORT);
+  console.log(`Server running on port ${PORT}`);
 });
