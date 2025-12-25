@@ -17,8 +17,6 @@ app.use(express.json());
 app.use("/v", express.static(path.join(__dirname, "public")));
 
 const sessions = new Map();
-
-/* cleanup */
 setInterval(() => {
   const now = Date.now();
   for (const [id, s] of sessions) {
