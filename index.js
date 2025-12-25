@@ -12,21 +12,20 @@ const __dirname = path.dirname(__filename);
 
 app.use(cors());
 app.use(express.json());
+app.use(express.static(path.join(__dirname, "public")));
 
 /* =======================
    SESSION STORE & QUEUE
 ======================= */
 const sessions = new Map();
-
-// Queue system: array of session IDs waiting for verification
 const queue = [];
 let processingQueue = false;
 
-// Auto cleanup expired sessions (5 minutes)
+// Cleanup expired sessions every minute
 setInterval(() => {
   const now = Date.now();
   for (const [id, s] of sessions) {
-    if (now - s.createdAt > 5 * 60 * 1000) {
+    if (now - s.createdAt > 5 * 60 * 1000) { // 5 min expiry
       sessions.delete(id);
       const index = queue.indexOf(id);
       if (index !== -1) queue.splice(index, 1);
@@ -38,7 +37,7 @@ setInterval(() => {
    API ROUTES
 ======================= */
 
-/* CREATE verification */
+// Create a new verification session
 app.post("/create", (req, res) => {
   const id = nanoid(12);
 
@@ -49,7 +48,7 @@ app.post("/create", (req, res) => {
     queued: true
   });
 
-  queue.push(id); // add to verification queue
+  queue.push(id);
 
   res.json({
     success: true,
@@ -59,38 +58,33 @@ app.post("/create", (req, res) => {
   });
 });
 
-/* VERIFY (frontend calls this) */
-app.post("/verify/:id", async (req, res) => {
+// Verify the front-of-queue user
+app.post("/verify/:id", (req, res) => {
   const session = sessions.get(req.params.id);
   if (!session) return res.status(404).json({ success: false });
 
-  // Check queue position
-  const position = queue.indexOf(session.id);
-  if (position === -1) {
-    return res.status(400).json({ success: false, message: "Already verified or not in queue" });
-  }
-
-  if (position > 0) {
-    return res.json({
+  // Only allow the first in queue to verify
+  if (queue[0] !== session.id) {
+    return res.status(400).json({
       success: false,
-      message: `You are in queue. Position: ${position + 1}`
+      message: `You are in queue. Position: ${queue.indexOf(session.id) + 1}`
     });
   }
 
-  // Process verification
+  // Mark as verified
   session.verified = true;
   session.queued = false;
 
   // Remove from queue
   queue.shift();
 
-  // Start processing next in queue after 2 seconds
-  if (!processingQueue) processQueue();
+  // Optional: 2-second delay before next verification
+  setTimeout(() => {}, 2000);
 
-  res.json({ success: true });
+  return res.json({ success: true });
 });
 
-/* STATUS (Discord bot checks this) */
+// Get session status for frontend polling
 app.get("/status/:id", (req, res) => {
   const session = sessions.get(req.params.id);
   if (!session) return res.status(404).json({ success: false });
@@ -111,28 +105,8 @@ app.get("/v/:id", (req, res) => {
 });
 
 /* =======================
-   QUEUE PROCESSING
-======================= */
-async function processQueue() {
-  processingQueue = true;
-  while (queue.length > 0) {
-    const nextId = queue[0];
-    const session = sessions.get(nextId);
-    if (!session) {
-      queue.shift();
-      continue;
-    }
-
-    // Wait 2 seconds before allowing next user
-    await new Promise(r => setTimeout(r, 2000));
-    queue.shift();
-  }
-  processingQueue = false;
-}
-
-/* =======================
    START SERVER
 ======================= */
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`Verification server running on port ${PORT}`);
 });
