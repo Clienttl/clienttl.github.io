@@ -1,85 +1,70 @@
 import express from "express";
+import cors from "cors";
 import { nanoid } from "nanoid";
 import path from "path";
+import { fileURLToPath } from "url";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+app.use(cors());
 app.use(express.json());
-app.use(express.static("public"));
 
-/*
-tokenStore structure:
-token: {
-  userId,
-  createdAt,
-  verified,
-  callback
-}
-*/
-const tokenStore = new Map();
+// Serve frontend
+app.use("/v", express.static(path.join(__dirname, "public")));
 
-// ⏱ token expiration (5 min)
-const TOKEN_TTL = 5 * 60 * 1000;
+const sessions = new Map();
 
-/* ================= CREATE VERIFICATION ================= */
-app.post("/api/create", (req, res) => {
-  const { userId, callback } = req.body;
-  if (!userId || !callback) {
-    return res.status(400).json({ error: "Missing userId or callback" });
+/* cleanup */
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, s] of sessions) {
+    if (now - s.createdAt > 5 * 60 * 1000) {
+      sessions.delete(id);
+    }
   }
+}, 60_000);
 
-  const token = nanoid(32);
-  tokenStore.set(token, {
-    userId,
-    callback,
-    verified: false,
-    createdAt: Date.now()
+/* CREATE */
+app.post("/create", (req, res) => {
+  const id = nanoid(12);
+
+  sessions.set(id, {
+    id,
+    createdAt: Date.now(),
+    verified: false
   });
 
-  const url = `${req.protocol}://${req.get("host")}/v/${token}`;
-  res.json({ url, token });
+  res.json({
+    success: true,
+    id,
+    url: `https://beanierot.cc/v/${id}`
+  });
 });
 
-/* ================= VERIFY PAGE ================= */
-app.get("/v/:token", (req, res) => {
-  const token = tokenStore.get(req.params.token);
-  if (!token) return res.status(404).send("Invalid or expired link");
+/* VERIFY */
+app.post("/verify/:id", (req, res) => {
+  const s = sessions.get(req.params.id);
+  if (!s) return res.status(404).json({ success: false });
 
-  if (Date.now() - token.createdAt > TOKEN_TTL) {
-    tokenStore.delete(req.params.token);
-    return res.send("Verification link expired.");
-  }
-
-  res.sendFile(path.resolve("public/verify.html"));
-});
-
-/* ================= HOLD CONFIRM ================= */
-app.post("/api/confirm/:token", async (req, res) => {
-  const entry = tokenStore.get(req.params.token);
-  if (!entry) return res.status(404).json({ error: "Invalid token" });
-
-  entry.verified = true;
-
-  // 🔁 CALLBACK
-  try {
-    await fetch(entry.callback, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        userId: entry.userId,
-        token: req.params.token,
-        verified: true
-      })
-    });
-  } catch (e) {
-    console.error("Callback failed:", e.message);
-  }
-
-  tokenStore.delete(req.params.token);
+  s.verified = true;
   res.json({ success: true });
 });
 
-app.listen(PORT, () =>
-  console.log("Verification API running on port", PORT)
-);
+/* STATUS */
+app.get("/status/:id", (req, res) => {
+  const s = sessions.get(req.params.id);
+  if (!s) return res.status(404).json({ success: false });
+
+  res.json({
+    success: true,
+    verified: s.verified
+  });
+});
+
+app.listen(PORT, () => {
+  console.log("Running on port", PORT);
+});
